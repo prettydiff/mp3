@@ -4,8 +4,18 @@ import { readdir, stat, Stats, unlink } from "fs";
 import { sep } from "path";
 import ffmpeg from "./ffmpeg.js";
 
+// cspell: words libvorbis, qscale
+
 const mp3 = function ():void {
-    const musicPath:string = (process.argv.length > 2)
+    const format:"mp3"|"ogg" = (function () {
+            if (process.argv.length > 2 && (process.argv[2] === "mp3" || process.argv[2] === "ogg")) {
+                const item = process.argv[2];
+                process.argv.splice(2, 1);
+                return item;
+            }
+            return "mp3";
+        }()),
+        musicPath:string = (process.argv.length > 2)
             ? process.argv[2]
             : process.cwd();
     readdir(musicPath, function (readError:NodeJS.ErrnoException, list:string[]):void {
@@ -13,13 +23,18 @@ const mp3 = function ():void {
             let listIndex:number = 0;
             const fileList:string[] = [],
                 listLength:number = list.length,
+                reg:RegExp = new RegExp(`\\.${format}$`),
                 convert = function () {
                     let musicIndex:number = 0;
                     const musicLength:number = fileList.length,
                         childWrapper = function ():void {
                             const inPath:string = musicPath + sep + fileList[musicIndex],
-                                outPath:string = fileList[musicIndex].slice(0, fileList[musicIndex].lastIndexOf("."));
-                            exec(`${ffmpeg} -i "${inPath}" -vn -ab 320k -ar 48000 -y "${musicPath + sep + outPath}.mp3"`, {}, function (childError:ExecException, stdout:string, stderr:string):void {
+                                outPath:string = fileList[musicIndex].slice(0, fileList[musicIndex].lastIndexOf(".")),
+                                command = {
+                                    mp3: `${ffmpeg} -i "${inPath}" -vn -ab 320k -ar 48000 -y "${musicPath + sep + outPath}.mp3"`,
+                                    ogg: `${ffmpeg} -i "${inPath}" -c:a libvorbis -qscale:a 10 "${musicPath + sep + outPath}.ogg"`
+                                };
+                            exec(command[format], {}, function (childError:ExecException, stdout:string, stderr:string):void {
                                 if (childError === null) {
                                     unlink(inPath, function (unlinkError:NodeJS.ErrnoException) {
                                         if (unlinkError === null) {
@@ -47,7 +62,7 @@ const mp3 = function ():void {
                 statWrapper = function () {
                     stat(musicPath + sep + list[listIndex], function (statErr:NodeJS.ErrnoException, stats:Stats):void {
                         if (statErr === null) {
-                            if (stats.isFile() === true && (/\.mp3$/).test(list[listIndex]) === false && (/\.txt$/).test(list[listIndex]) === false) {
+                            if (stats.isFile() === true && reg.test(list[listIndex]) === false && (/\.txt$/).test(list[listIndex]) === false) {
                                 fileList.push(list[listIndex]);
                             }
                             listIndex = listIndex + 1;
